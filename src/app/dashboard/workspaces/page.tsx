@@ -94,6 +94,12 @@ export default function WorkspacesPage() {
       return;
     }
 
+    const tenantId = localStorage.getItem("current_tenant_id");
+    if (!tenantId) {
+      setCreateError("No hay una empresa activa seleccionada");
+      return;
+    }
+
     setIsCreating(true);
     setCreateError(null);
 
@@ -102,7 +108,7 @@ export default function WorkspacesPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          tenantId: PLACEHOLDER_UUID,
+          tenantId,
           workspaceNombre: name,
           maxMemberLimitId: PLACEHOLDER_UUID,
         }),
