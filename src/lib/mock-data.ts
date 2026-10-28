@@ -164,3 +164,5 @@ export const catalogPlugins: CatalogPlugin[] = [
     version: "0.9.4",
   },
 ];
+
+export const installedPlugins: CatalogPlugin[] = catalogPlugins.slice(0, 2);

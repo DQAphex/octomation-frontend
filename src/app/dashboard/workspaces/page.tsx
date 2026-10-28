@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, type FormEvent } from "react";
+import Link from "next/link";
 import {
   Building2,
   ChevronRight,
@@ -262,14 +263,13 @@ export default function WorkspacesPage() {
                   {workspace.plugins}{" "}
                   {workspace.plugins === 1 ? "plugin" : "plugins"}
                 </span>
-                <button
-                  type="button"
-                  onClick={openPluginModal}
+                <Link
+                  href={`/dashboard/workspaces/${workspace.id}/plugins`}
                   className="inline-flex items-center gap-1 font-medium text-violet-400 transition-colors hover:text-violet-300"
                 >
-                  Crear plugin
+                  Abrir
                   <ChevronRight className="size-4" />
-                </button>
+                </Link>
               </div>
             </article>
           ))}
