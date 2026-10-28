@@ -11,6 +11,8 @@ import {
   TriangleAlert,
 } from "lucide-react";
 
+import CreatePluginModal from "@/components/plugins/CreatePluginModal";
+import { safeFetchJson } from "@/lib/api/safe-fetch";
 import { roleLabels, roleStyles } from "@/lib/roles";
 import type { Workspace } from "@/types";
 
@@ -60,18 +62,38 @@ export default function WorkspacesPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isPluginModalOpen, setIsPluginModalOpen] = useState(false);
   const [workspaceName, setWorkspaceName] = useState("");
   const [isCreating, setIsCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
 
   async function loadWorkspaces(signal?: AbortSignal) {
-    const res = await fetch(`${TENANTS_URL}/workspaces?page=1&limit=10`, {
-      signal,
-    });
-    if (!res.ok) throw new Error(`Error ${res.status} al cargar workspaces`);
-    const body = (await res.json()) as WorkspacesResponse;
-    const items = Array.isArray(body) ? body : body.data;
-    setWorkspaces(items.map(toWorkspaceCard));
+    try {
+      const result = await safeFetchJson<WorkspacesResponse>(
+        `${TENANTS_URL}/workspaces?page=1&limit=10`,
+        { signal },
+      );
+
+      if (result.aborted) return;
+      if (!result.ok) {
+        setError(result.error);
+        return;
+      }
+
+      const items = Array.isArray(result.data) ? result.data : result.data.data;
+      setWorkspaces(Array.isArray(items) ? items.map(toWorkspaceCard) : []);
+      setError(null);
+    } catch (err: unknown) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "No se pudieron cargar los workspaces",
+      );
+    }
+  }
+
+  function openPluginModal() {
+    setIsPluginModalOpen(true);
   }
 
   function openModal() {
@@ -104,22 +126,25 @@ export default function WorkspacesPage() {
     setCreateError(null);
 
     try {
-      const res = await fetch(`${TENANTS_URL}/workspaces`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          tenantId,
-          workspaceNombre: name,
-          maxMemberLimitId: PLACEHOLDER_UUID,
-        }),
-      });
+      const result = await safeFetchJson<ApiWorkspace>(
+        `${TENANTS_URL}/workspaces`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            tenantId,
+            workspaceNombre: name,
+            maxMemberLimitId: PLACEHOLDER_UUID,
+          }),
+        },
+      );
 
-      if (!res.ok) {
-        throw new Error(`Error ${res.status} al crear el workspace`);
+      if (!result.ok) {
+        setCreateError(result.error);
+        return;
       }
 
-      const created = (await res.json()) as ApiWorkspace;
-      setWorkspaces((current) => [toWorkspaceCard(created), ...current]);
+      setWorkspaces((current) => [toWorkspaceCard(result.data), ...current]);
       setIsModalOpen(false);
       setWorkspaceName("");
     } catch (err: unknown) {
@@ -135,21 +160,27 @@ export default function WorkspacesPage() {
 
   useEffect(() => {
     const controller = new AbortController();
+    let cancelled = false;
 
-    loadWorkspaces(controller.signal)
-      .catch((err: unknown) => {
-        if (controller.signal.aborted) return;
+    void (async () => {
+      try {
+        await loadWorkspaces(controller.signal);
+      } catch (err: unknown) {
+        if (cancelled || controller.signal.aborted) return;
         setError(
           err instanceof Error
             ? err.message
             : "No se pudieron cargar los workspaces",
         );
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) setIsLoading(false);
-      });
+      } finally {
+        if (!cancelled && !controller.signal.aborted) setIsLoading(false);
+      }
+    })();
 
-    return () => controller.abort();
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
   }, []);
 
   return (
@@ -163,14 +194,24 @@ export default function WorkspacesPage() {
             Espacios de trabajo a los que perteneces y tu rol en cada uno.
           </p>
         </div>
-        <button
-          type="button"
-          onClick={openModal}
-          className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-violet-600 px-4 text-sm font-medium text-white shadow-lg shadow-violet-600/25 transition-colors hover:bg-violet-500"
-        >
-          <Plus className="size-4" />
-          Crear nuevo Workspace
-        </button>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={openPluginModal}
+            className="relative z-20 inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-octo-700 px-4 text-sm font-medium text-zinc-200 transition-colors hover:border-violet-500/50 hover:text-violet-300"
+          >
+            <Puzzle className="size-4" />
+            Crear plugin
+          </button>
+          <button
+            type="button"
+            onClick={openModal}
+            className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-violet-600 px-4 text-sm font-medium text-white shadow-lg shadow-violet-600/25 transition-colors hover:bg-violet-500"
+          >
+            <Plus className="size-4" />
+            Crear nuevo Workspace
+          </button>
+        </div>
       </header>
 
       {isLoading ? (
@@ -221,10 +262,14 @@ export default function WorkspacesPage() {
                   {workspace.plugins}{" "}
                   {workspace.plugins === 1 ? "plugin" : "plugins"}
                 </span>
-                <span className="inline-flex items-center gap-1 font-medium text-violet-400 transition-colors group-hover:text-violet-300">
-                  Abrir
-                  <ChevronRight className="size-4 transition-transform group-hover:translate-x-0.5" />
-                </span>
+                <button
+                  type="button"
+                  onClick={openPluginModal}
+                  className="inline-flex items-center gap-1 font-medium text-violet-400 transition-colors hover:text-violet-300"
+                >
+                  Crear plugin
+                  <ChevronRight className="size-4" />
+                </button>
               </div>
             </article>
           ))}
@@ -244,6 +289,10 @@ export default function WorkspacesPage() {
             </span>
           </button>
         </section>
+      )}
+
+      {isPluginModalOpen && (
+        <CreatePluginModal onClose={() => setIsPluginModalOpen(false)} />
       )}
 
       {isModalOpen && (
