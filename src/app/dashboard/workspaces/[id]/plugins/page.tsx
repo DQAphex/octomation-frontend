@@ -1,15 +1,86 @@
+"use client";
+
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Store } from "lucide-react";
+import { useParams } from "next/navigation";
+import { ArrowLeft, LoaderCircle, Store, TriangleAlert } from "lucide-react";
 
+import ConfigurePluginModal from "@/components/plugins/ConfigurePluginModal";
 import InstalledPluginsGrid from "@/components/plugins/InstalledPluginsGrid";
-import { installedPlugins } from "@/lib/mock-data";
+import {
+  listPlugins,
+  listWorkspacePlugins,
+  PLUGINS_URL,
+  toInstalledPlugin,
+  unwrapList,
+} from "@/lib/api/plugins";
+import type { CatalogPlugin } from "@/types";
 
-export default async function WorkspacePluginsPage({
-  params,
-}: {
-  params: Promise<{ id: string }>;
-}) {
-  const { id } = await params;
+export default function WorkspacePluginsPage() {
+  const params = useParams<{ id: string }>();
+  const workspaceId = Array.isArray(params.id) ? params.id[0] : params.id;
+  const [plugins, setPlugins] = useState<CatalogPlugin[]>([]);
+  const [selected, setSelected] = useState<CatalogPlugin | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const loadInstalled = useCallback(
+    async (signal?: AbortSignal) => {
+      if (!workspaceId) return;
+      try {
+        const [installedResult, catalogResult] = await Promise.all([
+          listWorkspacePlugins(workspaceId),
+          listPlugins(),
+        ]);
+        if (signal?.aborted) return;
+
+        if (!installedResult.ok) {
+          setError(installedResult.error);
+          return;
+        }
+
+        const rows = unwrapList(installedResult.data);
+        const catalog = catalogResult.ok
+          ? unwrapList(catalogResult.data)
+          : [];
+        const catalogById = new Map(
+          catalog.map((plugin) => [
+            plugin.pluginId ?? plugin.id ?? "",
+            plugin,
+          ]),
+        );
+
+        setPlugins(
+          rows.map((row) =>
+            toInstalledPlugin(row, catalogById.get(row.pluginId)),
+          ),
+        );
+        setError(null);
+      } catch (err: unknown) {
+        if (signal?.aborted) return;
+        setError(
+          err instanceof Error
+            ? err.message
+            : "No se pudieron cargar los plugins instalados",
+        );
+      }
+    },
+    [workspaceId],
+  );
+
+  useEffect(() => {
+    const controller = new AbortController();
+
+    void (async () => {
+      try {
+        await loadInstalled(controller.signal);
+      } finally {
+        if (!controller.signal.aborted) setIsLoading(false);
+      }
+    })();
+
+    return () => controller.abort();
+  }, [loadInstalled]);
 
   return (
     <div className="space-y-8">
@@ -25,7 +96,7 @@ export default async function WorkspacePluginsPage({
           <h2 className="text-2xl font-semibold tracking-tight text-zinc-100">
             Plugins Activos en este Workspace
           </h2>
-          <p className="mt-1 font-mono text-xs text-zinc-500">{id}</p>
+          <p className="mt-1 font-mono text-xs text-zinc-500">{workspaceId}</p>
         </div>
         <Link
           href="/dashboard/plugins"
@@ -36,7 +107,40 @@ export default async function WorkspacePluginsPage({
         </Link>
       </header>
 
-      <InstalledPluginsGrid plugins={installedPlugins} />
+      {isLoading ? (
+        <div className="flex min-h-56 items-center justify-center gap-3 rounded-2xl border border-white/10 bg-octo-900/40 text-sm text-zinc-400">
+          <LoaderCircle className="size-5 animate-spin text-violet-400" />
+          Cargando plugins instalados...
+        </div>
+      ) : error ? (
+        <div className="flex items-start gap-3 rounded-2xl border border-red-500/30 bg-red-500/10 p-5 text-sm text-red-300">
+          <TriangleAlert className="mt-0.5 size-4 shrink-0" />
+          <div>
+            <p className="font-medium">
+              No se pudieron cargar los plugins instalados.
+            </p>
+            <p className="mt-1 text-red-300/80">
+              {error}. Verifica que el servicio esté en{" "}
+              <span className="font-mono">{PLUGINS_URL}</span>.
+            </p>
+          </div>
+        </div>
+      ) : (
+        <InstalledPluginsGrid plugins={plugins} onConfigure={setSelected} />
+      )}
+
+      {selected && (
+        <ConfigurePluginModal
+          workspaceId={workspaceId}
+          plugin={selected}
+          onClose={() => setSelected(null)}
+          onUninstalled={(pluginId) =>
+            setPlugins((current) =>
+              current.filter((plugin) => plugin.id !== pluginId),
+            )
+          }
+        />
+      )}
     </div>
   );
 }

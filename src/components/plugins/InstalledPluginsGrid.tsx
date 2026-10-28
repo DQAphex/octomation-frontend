@@ -1,16 +1,27 @@
 "use client";
 
-import { Puzzle, Settings2, Trash2, User } from "lucide-react";
+import { Puzzle, Settings2, User } from "lucide-react";
 
 import type { CatalogPlugin } from "@/types";
 
 interface InstalledPluginsGridProps {
   plugins: CatalogPlugin[];
+  onConfigure: (plugin: CatalogPlugin) => void;
 }
 
 export default function InstalledPluginsGrid({
   plugins,
+  onConfigure,
 }: InstalledPluginsGridProps) {
+  if (plugins.length === 0) {
+    return (
+      <div className="rounded-2xl border border-dashed border-octo-700 p-10 text-center text-sm text-zinc-400">
+        Este workspace no tiene plugins instalados. Explora el catálogo para
+        agregar uno.
+      </div>
+    );
+  }
+
   return (
     <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
       {plugins.map((plugin) => (
@@ -38,28 +49,18 @@ export default function InstalledPluginsGrid({
             {plugin.description}
           </p>
 
-          <div className="mt-6 flex flex-wrap items-center justify-between gap-3 border-t border-white/10 pt-4">
+          <div className="mt-6 flex items-center justify-between border-t border-white/10 pt-4">
             <span className="font-mono text-xs text-zinc-500">
               v{plugin.version.replace(/^v/i, "")}
             </span>
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={() => console.log(plugin.id)}
-                className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-octo-700 px-3 text-xs font-medium text-zinc-300 transition-colors hover:border-violet-500/50 hover:text-violet-300"
-              >
-                <Settings2 className="size-3.5" />
-                Configurar
-              </button>
-              <button
-                type="button"
-                onClick={() => console.log(plugin.id)}
-                className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-red-500/30 bg-red-500/10 px-3 text-xs font-medium text-red-400 transition-colors hover:border-red-400/50 hover:bg-red-500/20"
-              >
-                <Trash2 className="size-3.5" />
-                Desinstalar
-              </button>
-            </div>
+            <button
+              type="button"
+              onClick={() => onConfigure(plugin)}
+              className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg bg-violet-600 px-3 text-xs font-medium text-white shadow-lg shadow-violet-600/25 transition-colors hover:bg-violet-500"
+            >
+              <Settings2 className="size-3.5" />
+              Configurar
+            </button>
           </div>
         </article>
       ))}

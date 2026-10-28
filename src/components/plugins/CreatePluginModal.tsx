@@ -6,6 +6,7 @@ import { Code2, LoaderCircle, Puzzle, TriangleAlert } from "lucide-react";
 import {
   createPlugin,
   fetchGithubReleases,
+  isDuplicateRepositoryError,
   normalizeVersionParts,
   type CreatePluginPayload,
   type GithubRelease,
@@ -34,9 +35,13 @@ function isValidHttpUrl(value: string): boolean {
 
 interface CreatePluginModalProps {
   onClose: () => void;
+  onCreated?: () => void;
 }
 
-export default function CreatePluginModal({ onClose }: CreatePluginModalProps) {
+export default function CreatePluginModal({
+  onClose,
+  onCreated,
+}: CreatePluginModalProps) {
   const [name, setName] = useState("");
   const [author, setAuthor] = useState("");
   const [email, setEmail] = useState("");
@@ -154,13 +159,23 @@ export default function CreatePluginModal({ onClose }: CreatePluginModalProps) {
     try {
       const result = await createPlugin(body);
       if (!result.ok) {
-        setSubmitError(result.error);
+        setSubmitError(
+          isDuplicateRepositoryError(result.error)
+            ? "Ya existe un plugin registrado con la URL de este repositorio"
+            : result.error,
+        );
         return;
       }
+      onCreated?.();
       onClose();
     } catch (err: unknown) {
+      const message =
+        err instanceof Error ? err.message : "No se pudo registrar el plugin";
+      console.error("Error al crear plugin:", err);
       setSubmitError(
-        err instanceof Error ? err.message : "No se pudo registrar el plugin",
+        isDuplicateRepositoryError(message)
+          ? "Ya existe un plugin registrado con la URL de este repositorio"
+          : message,
       );
     } finally {
       setIsSubmitting(false);

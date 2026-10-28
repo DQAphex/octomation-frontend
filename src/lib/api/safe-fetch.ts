@@ -38,15 +38,31 @@ function toFriendlyNetworkError(error: unknown): string {
 
 async function readErrorMessage(res: Response): Promise<string> {
   try {
-    const data = (await res.json()) as {
-      message?: string | string[];
-      error?: string;
-    };
-    const message = data.message ?? data.error;
-    if (Array.isArray(message)) return message.join(". ");
-    if (typeof message === "string" && message.length > 0) return message;
+    const raw = await res.text();
+    if (!raw) return `Error ${res.status} ${res.statusText}`.trim();
+
+    try {
+      const data = JSON.parse(raw) as {
+        message?: string | string[];
+        error?: string;
+        cause?: { code?: string; message?: string; detail?: string };
+      };
+      const parts = [
+        Array.isArray(data.message) ? data.message.join(". ") : data.message,
+        data.error,
+        data.cause?.code,
+        data.cause?.message,
+        data.cause?.detail,
+      ].filter((part): part is string => typeof part === "string" && part.length > 0);
+
+      if (parts.length > 0) return parts.join(" | ");
+    } catch {
+      return raw;
+    }
+
+    return raw;
   } catch {
-    // El cuerpo no era JSON.
+    // Sin cuerpo.
   }
   return `Error ${res.status} ${res.statusText}`.trim();
 }
