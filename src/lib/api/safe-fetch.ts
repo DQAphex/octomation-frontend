@@ -81,9 +81,13 @@ export async function safeFetchJson<T>(
       return { ok: false, error: await readErrorMessage(res), aborted: false };
     }
 
+    const raw = await res.text();
+    if (!raw.trim()) {
+      return { ok: true, data: undefined as T };
+    }
+
     try {
-      const data = (await res.json()) as T;
-      return { ok: true, data };
+      return { ok: true, data: JSON.parse(raw) as T };
     } catch {
       return {
         ok: false,

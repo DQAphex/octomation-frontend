@@ -8,33 +8,27 @@ import {
   LoaderCircle,
   Plus,
   Puzzle,
+  Settings2,
   ShieldCheck,
   TriangleAlert,
 } from "lucide-react";
 
 import CreatePluginModal from "@/components/plugins/CreatePluginModal";
+import ConfigureWorkspaceModal from "@/components/workspaces/ConfigureWorkspaceModal";
+import { countWorkspacePlugins } from "@/lib/api/plugins";
 import { safeFetchJson } from "@/lib/api/safe-fetch";
+import {
+  listWorkspaces,
+  TENANTS_URL,
+  unwrapWorkspaces,
+  type ApiWorkspace,
+} from "@/lib/api/tenants";
 import { roleLabels, roleStyles } from "@/lib/roles";
 import type { Workspace } from "@/types";
 
-const TENANTS_URL =
-  process.env.NEXT_PUBLIC_TENANTS_URL ?? "http://localhost:4004";
-
 const PLACEHOLDER_UUID = "00000000-0000-0000-0000-000000000000";
 
-interface ApiWorkspace {
-  workspaceId: string;
-  tenantId: string;
-  workspaceNombre: string;
-  maxMemberLimitId: string;
-  status: "ACTIVE" | "INACTIVE";
-  createdAt: string;
-  updatedAt: string;
-}
-
-type WorkspacesResponse = { data: ApiWorkspace[] } | ApiWorkspace[];
-
-type WorkspaceCard = Workspace & { plugins: number };
+type WorkspaceCard = Workspace & { plugins: number | null };
 
 function toSlug(name: string): string {
   return name
@@ -46,7 +40,6 @@ function toSlug(name: string): string {
     .replace(/(^-|-$)/g, "");
 }
 
-// La API todavía no expone el rol del usuario ni la cantidad de plugins.
 function toWorkspaceCard(workspace: ApiWorkspace): WorkspaceCard {
   return {
     id: workspace.workspaceId,
@@ -54,7 +47,7 @@ function toWorkspaceCard(workspace: ApiWorkspace): WorkspaceCard {
     slug: toSlug(workspace.workspaceNombre),
     planId: "",
     role: "MEMBER",
-    plugins: 0,
+    plugins: null,
   };
 }
 
@@ -67,13 +60,33 @@ export default function WorkspacesPage() {
   const [workspaceName, setWorkspaceName] = useState("");
   const [isCreating, setIsCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
+  const [workspaceToConfigure, setWorkspaceToConfigure] =
+    useState<WorkspaceCard | null>(null);
+
+  async function loadPluginCounts(
+    cards: WorkspaceCard[],
+    signal?: AbortSignal,
+  ) {
+    const counted = await Promise.all(
+      cards.map(async (card) => ({
+        id: card.id,
+        plugins: await countWorkspacePlugins(card.id, signal),
+      })),
+    );
+
+    if (signal?.aborted) return;
+
+    setWorkspaces((current) =>
+      current.map((card) => {
+        const match = counted.find((item) => item.id === card.id);
+        return match ? { ...card, plugins: match.plugins } : card;
+      }),
+    );
+  }
 
   async function loadWorkspaces(signal?: AbortSignal) {
     try {
-      const result = await safeFetchJson<WorkspacesResponse>(
-        `${TENANTS_URL}/workspaces?page=1&limit=10`,
-        { signal },
-      );
+      const result = await listWorkspaces(signal);
 
       if (result.aborted) return;
       if (!result.ok) {
@@ -81,9 +94,11 @@ export default function WorkspacesPage() {
         return;
       }
 
-      const items = Array.isArray(result.data) ? result.data : result.data.data;
-      setWorkspaces(Array.isArray(items) ? items.map(toWorkspaceCard) : []);
+      const items = unwrapWorkspaces(result.data);
+      const cards = items.map(toWorkspaceCard);
+      setWorkspaces(cards);
       setError(null);
+      await loadPluginCounts(cards, signal);
     } catch (err: unknown) {
       setError(
         err instanceof Error
@@ -145,7 +160,10 @@ export default function WorkspacesPage() {
         return;
       }
 
-      setWorkspaces((current) => [toWorkspaceCard(result.data), ...current]);
+      setWorkspaces((current) => [
+        { ...toWorkspaceCard(result.data), plugins: 0 },
+        ...current,
+      ]);
       setIsModalOpen(false);
       setWorkspaceName("");
     } catch (err: unknown) {
@@ -257,19 +275,34 @@ export default function WorkspacesPage() {
                 /{workspace.slug}
               </p>
 
-              <div className="mt-6 flex items-center justify-between border-t border-white/10 pt-4 text-sm">
+              <div className="mt-6 flex items-center justify-between gap-3 border-t border-white/10 pt-4 text-sm">
                 <span className="inline-flex items-center gap-1.5 text-zinc-400">
-                  <Puzzle className="size-4" />
-                  {workspace.plugins}{" "}
-                  {workspace.plugins === 1 ? "plugin" : "plugins"}
+                  {workspace.plugins === null ? (
+                    <LoaderCircle className="size-4 animate-spin text-violet-400" />
+                  ) : (
+                    <Puzzle className="size-4" />
+                  )}
+                  {workspace.plugins === null
+                    ? "Contando..."
+                    : `${workspace.plugins} ${workspace.plugins === 1 ? "plugin" : "plugins"}`}
                 </span>
-                <Link
-                  href={`/dashboard/workspaces/${workspace.id}/plugins`}
-                  className="inline-flex items-center gap-1 font-medium text-violet-400 transition-colors hover:text-violet-300"
-                >
-                  Abrir
-                  <ChevronRight className="size-4" />
-                </Link>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setWorkspaceToConfigure(workspace)}
+                    className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-octo-700 px-2.5 text-xs font-medium text-zinc-300 transition-colors hover:border-violet-500/50 hover:text-violet-300"
+                  >
+                    <Settings2 className="size-3.5" />
+                    Configurar
+                  </button>
+                  <Link
+                    href={`/dashboard/workspaces/${workspace.id}/plugins`}
+                    className="inline-flex items-center gap-1 font-medium text-violet-400 transition-colors hover:text-violet-300"
+                  >
+                    Abrir
+                    <ChevronRight className="size-4" />
+                  </Link>
+                </div>
               </div>
             </article>
           ))}
@@ -293,6 +326,20 @@ export default function WorkspacesPage() {
 
       {isPluginModalOpen && (
         <CreatePluginModal onClose={() => setIsPluginModalOpen(false)} />
+      )}
+
+      {workspaceToConfigure && (
+        <ConfigureWorkspaceModal
+          workspaceId={workspaceToConfigure.id}
+          workspaceName={workspaceToConfigure.name}
+          workspaceSlug={workspaceToConfigure.slug}
+          onClose={() => setWorkspaceToConfigure(null)}
+          onDeleted={(workspaceId) =>
+            setWorkspaces((current) =>
+              current.filter((workspace) => workspace.id !== workspaceId),
+            )
+          }
+        />
       )}
 
       {isModalOpen && (

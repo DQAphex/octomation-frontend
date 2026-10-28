@@ -111,10 +111,23 @@ export function toInstalledPlugin(
   return toCatalogPlugin(source);
 }
 
-export async function listWorkspacePlugins(workspaceId: string) {
+export async function listWorkspacePlugins(
+  workspaceId: string,
+  signal?: AbortSignal,
+) {
   return safeFetchJson<ApiWorkspacePlugin[] | { data: ApiWorkspacePlugin[] }>(
     `${PLUGINS_URL}/workspaces/${workspaceId}/plugins`,
+    { signal },
   );
+}
+
+export async function countWorkspacePlugins(
+  workspaceId: string,
+  signal?: AbortSignal,
+) {
+  const result = await listWorkspacePlugins(workspaceId, signal);
+  if (!result.ok) return 0;
+  return unwrapList(result.data).length;
 }
 
 export async function fetchGithubReleases(repositoryUrl: string) {

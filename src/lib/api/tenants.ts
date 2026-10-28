@@ -28,3 +28,10 @@ export function unwrapWorkspaces(
   if (!body) return [];
   return Array.isArray(body) ? body : body.data ?? [];
 }
+
+export async function deleteWorkspace(workspaceId: string) {
+  return safeFetchJson<{ message?: string }>(
+    `${TENANTS_URL}/workspaces/${workspaceId}`,
+    { method: "DELETE" },
+  );
+}
