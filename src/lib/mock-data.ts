@@ -1,4 +1,11 @@
-import type { Member, Role, Subscription, User, Workspace } from "@/types";
+import type {
+  CatalogPlugin,
+  Member,
+  Role,
+  Subscription,
+  User,
+  Workspace,
+} from "@/types";
 
 // Datos de ejemplo hasta integrar los servicios de IAM, Tenants y Billing.
 
@@ -116,5 +123,44 @@ export const roles: Role[] = [
       { label: permissionLabels.viewBilling, granted: true },
       { label: permissionLabels.manageBilling, granted: true },
     ],
+  },
+];
+
+export const catalogPlugins: CatalogPlugin[] = [
+  {
+    id: "plg_01",
+    name: "Generador de Plugins",
+    author: "Diego Quioza",
+    description:
+      "Crea la estructura base de un plugin de OCTOMATION a partir de una plantilla.",
+    category: "General",
+    version: "1.1.0",
+  },
+  {
+    id: "plg_02",
+    name: "Lector de PDF RILES",
+    author: "Santiago Pérez",
+    description:
+      "Extrae tablas y campos de informes ambientales en PDF para tus automatizaciones.",
+    category: "Medioambiente",
+    version: "1.0.0",
+  },
+  {
+    id: "plg_03",
+    name: "Envío de Correos",
+    author: "Valentina Rojas",
+    description:
+      "Dispara notificaciones por correo cuando un flujo termina o falla.",
+    category: "Comunicaciones",
+    version: "2.3.1",
+  },
+  {
+    id: "plg_04",
+    name: "Conector Slack",
+    author: "Matías González",
+    description:
+      "Publica alertas y resúmenes de ejecución en los canales de tu equipo.",
+    category: "Integraciones",
+    version: "0.9.4",
   },
 ];

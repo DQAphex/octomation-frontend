@@ -42,6 +42,15 @@ export interface Role {
   permissions: Permission[];
 }
 
+export interface CatalogPlugin {
+  id: string;
+  name: string;
+  author: string;
+  description: string;
+  category: string;
+  version: string;
+}
+
 export interface Subscription {
   id: string;
   planName: PlanName;

@@ -2,6 +2,7 @@ import {
   Building2,
   CreditCard,
   LayoutDashboard,
+  Puzzle,
   ShieldCheck,
   Users,
   type LucideIcon,
@@ -28,6 +29,12 @@ export const navItems: NavItem[] = [
     description: "Crea y administra tus espacios de trabajo.",
     tag: "HU-5",
     icon: Building2,
+  },
+  {
+    href: "/dashboard/plugins",
+    label: "Catálogo de Plugins",
+    description: "Instala y publica automatizaciones.",
+    icon: Puzzle,
   },
   {
     href: "/dashboard/members",
