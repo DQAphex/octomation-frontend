@@ -54,11 +54,33 @@ export interface CatalogPlugin {
 
 export interface Subscription {
   id: string;
-  planName: PlanName;
+  planId?: string;
+  planName: string;
   status: SubscriptionStatus;
   price: number;
   /** Fecha ISO 8601 (YYYY-MM-DD). */
   renewalDate: string;
   usageAutomations: number;
   maxAutomations: number;
+}
+
+export type InvoiceStatus = "PAID" | "PENDING" | "FAILED";
+
+export interface Invoice {
+  id: string;
+  date: string;
+  amount: number;
+  planName: string;
+  status: InvoiceStatus;
+}
+
+export interface BillingPlan {
+  id: string;
+  name: string;
+  displayName: string;
+  price: number;
+  maxAutomations: number;
+  maxStorage?: number;
+  description: string;
+  features: string[];
 }
