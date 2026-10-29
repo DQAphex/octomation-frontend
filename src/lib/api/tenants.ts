@@ -46,6 +46,7 @@ export interface ApiWorkspaceInvitation {
   lastname?: string;
   iamUserId?: string;
   email?: string;
+  invitedEmail?: string;
 }
 
 export function getSessionAuthHeaders(): HeadersInit {
@@ -145,10 +146,16 @@ export async function deleteWorkspace(workspaceId: string) {
 
 export async function listWorkspaceMembers(
   workspaceId: string,
+  tenantId: string,
   signal?: AbortSignal,
 ) {
+  if (!workspaceId || !tenantId) {
+    return { ok: true as const, data: [] as ApiWorkspaceMember[] };
+  }
+
+  const params = new URLSearchParams({ workspaceId });
   return safeFetchJson<ApiWorkspaceMember[] | { data: ApiWorkspaceMember[] }>(
-    `${TENANTS_URL}/workspaces/${workspaceId}/members`,
+    `${TENANTS_URL}/workspaces/${tenantId}/members?${params.toString()}`,
     withAuth({ signal }),
   );
 }
@@ -165,11 +172,20 @@ export async function getMemberProfile(
 
 export async function listWorkspaceInvitations(
   workspaceId: string,
+  tenantId: string,
   signal?: AbortSignal,
 ) {
+  if (!workspaceId || !tenantId) {
+    return { ok: true as const, data: [] as ApiWorkspaceInvitation[] };
+  }
+
+  const params = new URLSearchParams({ workspaceId });
   return safeFetchJson<
     ApiWorkspaceInvitation[] | { data: ApiWorkspaceInvitation[] }
-  >(`${TENANTS_URL}/workspaces/${workspaceId}/invitations`, withAuth({ signal }));
+  >(
+    `${TENANTS_URL}/workspaces/${tenantId}/invitations?${params.toString()}`,
+    withAuth({ signal }),
+  );
 }
 
 export function toUiMemberStatus(status?: string | null): MemberStatus {
@@ -186,6 +202,70 @@ function toUiRole(role?: string | null): UserRole {
   return "MEMBER";
 }
 
+function emailsMatch(left?: string | null, right?: string | null): boolean {
+  const a = left?.trim().toLowerCase();
+  const b = right?.trim().toLowerCase();
+  return Boolean(a && b && a === b);
+}
+
+export function isWorkspaceOwnerMember(
+  member: Pick<Member, "email" | "isOwner">,
+  session?: SessionUser | null,
+): boolean {
+  if (member.isOwner) return true;
+  const current = session ?? getSessionUser();
+  return emailsMatch(member.email, current?.email);
+}
+
+export function ownerMemberFromSession(
+  session?: SessionUser | null,
+): Member | null {
+  const current = session ?? getSessionUser();
+  if (!current?.id && !current?.email) return null;
+
+  return {
+    id: current.id || `owner-${current.email}`,
+    name:
+      current.full_name ||
+      current.fullName ||
+      current.email ||
+      "Propietario",
+    email: current.email || "",
+    role: toUiRole(current.role),
+    status: "ACTIVE",
+    isOwner: true,
+  };
+}
+
+export function sortMembersOwnerFirst(
+  members: Member[],
+  session?: SessionUser | null,
+): Member[] {
+  const current = session ?? getSessionUser();
+  const owner = ownerMemberFromSession(current);
+  const rest = members.filter(
+    (member) => !isWorkspaceOwnerMember(member, current),
+  );
+  const existing = members.find((member) =>
+    isWorkspaceOwnerMember(member, current),
+  );
+
+  const first: Member | null = existing
+    ? {
+        ...existing,
+        isOwner: true,
+        status: "ACTIVE",
+        email: existing.email || owner?.email || "",
+        name:
+          existing.name && existing.name !== "Miembro"
+            ? existing.name
+            : owner?.name || existing.name,
+      }
+    : owner;
+
+  return first ? [first, ...rest] : rest;
+}
+
 export function mapWorkspaceMember(
   row: ApiWorkspaceMember,
   profile?: ApiMemberProfile | null,
@@ -197,18 +277,25 @@ export function mapWorkspaceMember(
     .join(" ")
     .trim();
   const isCurrentUser =
-    Boolean(session?.id) &&
-    Boolean(profile?.iamUserId) &&
-    session?.id === profile?.iamUserId;
+    (Boolean(session?.id) &&
+      Boolean(profile?.iamUserId) &&
+      session?.id === profile?.iamUserId) ||
+    emailsMatch(session?.email, iamUser?.email);
 
   return {
     id: row.memberId,
-    name: fullName || iamUser?.fullName || "Miembro",
+    name:
+      fullName ||
+      iamUser?.fullName ||
+      (isCurrentUser
+        ? session?.fullName || session?.full_name || "Miembro"
+        : "Miembro"),
     email:
       iamUser?.email ||
       (isCurrentUser ? (session?.email ?? "") : ""),
     role: isCurrentUser ? toUiRole(session?.role) : "MEMBER",
-    status: toUiMemberStatus(row.status ?? profile?.status),
+    status: isCurrentUser ? "ACTIVE" : toUiMemberStatus(row.status ?? profile?.status),
+    isOwner: isCurrentUser,
   };
 }
 
@@ -223,8 +310,14 @@ export function mapInvitationToMember(
 
   return {
     id: invitation.invitationId || invitation.receiverId || `invite-${invitation.email ?? "pending"}`,
-    name: fullName || iamUser?.fullName || iamUser?.email || "Invitado",
-    email: iamUser?.email || invitation.email || "",
+    name:
+      fullName ||
+      iamUser?.fullName ||
+      invitation.email ||
+      invitation.invitedEmail ||
+      "Invitado",
+    email:
+      iamUser?.email || invitation.email || invitation.invitedEmail || "",
     role: "MEMBER",
     status: "PENDING",
   };
@@ -237,11 +330,16 @@ function isPendingInvitation(status?: string | null): boolean {
 
 export async function fetchWorkspaceMembers(
   workspaceId: string,
+  tenantId: string,
   signal?: AbortSignal,
 ): Promise<SafeFetchResult<Member[]>> {
+  if (!workspaceId || !tenantId) {
+    return { ok: true, data: [] };
+  }
+
   const [membersResult, invitationsResult, iamResult] = await Promise.all([
-    listWorkspaceMembers(workspaceId, signal),
-    listWorkspaceInvitations(workspaceId, signal),
+    listWorkspaceMembers(workspaceId, tenantId, signal),
+    listWorkspaceInvitations(workspaceId, tenantId, signal),
     listIamUsers(signal),
   ]);
 
@@ -261,11 +359,17 @@ export async function fetchWorkspaceMembers(
       .map((user) => [user.id, user]),
   );
 
-  const memberRows = membersResult.ok ? unwrapList(membersResult.data) : [];
+  const memberRows = (membersResult.ok ? unwrapList(membersResult.data) : [])
+    .filter((row) => row.workspaceId === workspaceId);
+
   const members = await Promise.all(
     memberRows.map(async (row) => {
       const profile = await getMemberProfile(row.memberId, signal);
-      const data = profile.ok ? profile.data : null;
+      const data =
+        profile.ok &&
+        (!profile.data?.tenantId || profile.data.tenantId === tenantId)
+          ? profile.data
+          : null;
       const iamUser = data?.iamUserId ? iamById.get(data.iamUserId) : undefined;
       return mapWorkspaceMember(row, data, session, iamUser);
     }),
@@ -276,9 +380,12 @@ export async function fetchWorkspaceMembers(
   }
 
   const memberIds = new Set(members.map((member) => member.id));
-  const invitationRows = invitationsResult.ok
-    ? unwrapList(invitationsResult.data)
-    : [];
+  const invitationRows = (
+    invitationsResult.ok ? unwrapList(invitationsResult.data) : []
+  ).filter(
+    (invitation) =>
+      !invitation.workspaceId || invitation.workspaceId === workspaceId,
+  );
 
   const pending = invitationRows
     .filter((invitation) => isPendingInvitation(invitation.status))
@@ -293,7 +400,10 @@ export async function fetchWorkspaceMembers(
       return mapInvitationToMember(invitation, iamUser);
     });
 
-  return { ok: true, data: [...members, ...pending] };
+  return {
+    ok: true,
+    data: sortMembersOwnerFirst([...members, ...pending], session),
+  };
 }
 
 export interface CreateInvitationPayload {
@@ -320,22 +430,9 @@ export async function createWorkspaceInvitation(
   });
 }
 
-function bearerHeaders(): HeadersInit {
-  const token =
-    typeof window === "undefined" ? null : localStorage.getItem("token");
-  return {
-    "Content-Type": "application/json",
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
-  };
-}
-
 export async function deleteWorkspaceInvitation(invitationId: string) {
-  return safeFetchJson<{ message?: string }>(
+  return deleteByUrl(
     `${TENANTS_URL}/workspaces/invitations/${invitationId}`,
-    {
-      method: "DELETE",
-      headers: bearerHeaders(),
-    },
   );
 }
 
@@ -343,12 +440,8 @@ export async function deleteWorkspaceMember(
   workspaceId: string,
   memberId: string,
 ) {
-  return safeFetchJson<{ message?: string }>(
+  return deleteByUrl(
     `${TENANTS_URL}/workspaces/${workspaceId}/members/${memberId}`,
-    {
-      method: "DELETE",
-      headers: bearerHeaders(),
-    },
   );
 }
 
@@ -361,4 +454,56 @@ export async function removeMemberOrInvitation(
   }
 
   return deleteWorkspaceMember(workspaceId, member.id);
+}
+
+async function deleteByUrl(url: string): Promise<SafeFetchResult<{ message?: string }>> {
+  const token =
+    typeof window === "undefined" ? null : localStorage.getItem("token");
+
+  if (!token) {
+    return {
+      ok: false,
+      error: "No hay una sesión activa. Inicia sesión de nuevo.",
+      aborted: false,
+    };
+  }
+
+  const res = await fetch(url, {
+    method: "DELETE",
+    cache: "no-store",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
+  if (!res.ok) {
+    return { ok: false, error: await readDeleteError(res), aborted: false };
+  }
+
+  return { ok: true, data: { message: "Eliminado" } };
+}
+
+async function readDeleteError(res: Response): Promise<string> {
+  try {
+    const raw = await res.text();
+    if (!raw.trim()) return `Error ${res.status} ${res.statusText}`.trim();
+
+    try {
+      const data = JSON.parse(raw) as {
+        message?: string | string[];
+        error?: string;
+      };
+      const message = Array.isArray(data.message)
+        ? data.message.join(". ")
+        : data.message || data.error;
+      if (message) return message;
+    } catch {
+      return raw;
+    }
+
+    return raw;
+  } catch {
+    return `Error ${res.status} ${res.statusText}`.trim();
+  }
 }

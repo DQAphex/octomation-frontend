@@ -5,16 +5,23 @@ import { LoaderCircle, Pencil, Trash2 } from "lucide-react";
 
 import InviteMemberButton from "@/components/members/InviteMemberButton";
 import {
+  TENANTS_URL,
   fetchWorkspaceMembers,
+  getCurrentTenantId,
   getCurrentWorkspaceId,
   getWorkspace,
-  removeMemberOrInvitation,
+  isWorkspaceOwnerMember,
   setCurrentWorkspaceId,
+  sortMembersOwnerFirst,
 } from "@/lib/api/tenants";
+import { getSessionUser } from "@/lib/auth/session";
 import { getInitials } from "@/lib/format";
 import { useWorkspaces } from "@/lib/hooks/use-workspaces";
 import { roleLabels, roleStyles } from "@/lib/roles";
 import type { Member, MemberStatus } from "@/types";
+
+const ownerRoleStyle =
+  "border-violet-500/30 bg-violet-500/10 text-violet-300";
 
 const statusLabels: Record<MemberStatus, string> = {
   ACTIVE: "Activo",
@@ -33,6 +40,30 @@ const statusDotStyles: Record<MemberStatus, string> = {
 
 function isActiveStatus(status: string): boolean {
   return status === "active" || status === "ACTIVE";
+}
+
+async function readDeleteErrorMessage(res: Response): Promise<string> {
+  try {
+    const raw = await res.text();
+    if (!raw.trim()) return `Error ${res.status} ${res.statusText}`.trim();
+
+    try {
+      const data = JSON.parse(raw) as {
+        message?: string | string[];
+        error?: string;
+      };
+      const message = Array.isArray(data.message)
+        ? data.message.join(". ")
+        : data.message || data.error;
+      if (message) return message;
+    } catch {
+      return raw;
+    }
+
+    return raw;
+  } catch {
+    return `Error ${res.status} ${res.statusText}`.trim();
+  }
 }
 
 export default function MembersView() {
@@ -65,6 +96,10 @@ export default function MembersView() {
           targetWorkspaceId,
           options?.signal,
         );
+        const tenantId =
+          (details.ok ? details.data?.tenantId : null) ??
+          getCurrentTenantId();
+
         if (details.ok && details.data?.tenantId) {
           setCurrentWorkspaceId(targetWorkspaceId, {
             silent: true,
@@ -72,8 +107,15 @@ export default function MembersView() {
           });
         }
 
+        if (!tenantId) {
+          setMembers([]);
+          setError(null);
+          return;
+        }
+
         const result = await fetchWorkspaceMembers(
           targetWorkspaceId,
+          tenantId,
           options?.signal,
         );
 
@@ -86,7 +128,7 @@ export default function MembersView() {
           return;
         }
 
-        setMembers(result.data);
+        setMembers(sortMembersOwnerFirst(result.data, getSessionUser()));
         setError(null);
       } catch (err: unknown) {
         if (options?.signal?.aborted) return;
@@ -125,7 +167,7 @@ export default function MembersView() {
           member.email.toLowerCase() === invitee.email.toLowerCase(),
       );
       if (alreadyListed) return current;
-      return [
+      return sortMembersOwnerFirst([
         ...current,
         {
           id: `pending-${invitee.email}`,
@@ -134,14 +176,18 @@ export default function MembersView() {
           role: "MEMBER",
           status: "PENDING",
         },
-      ];
+      ]);
     });
 
     void loadMembers(invitee.workspaceId, { silent: true });
   }
 
+  const session = getSessionUser();
+  const visibleMembers = sortMembersOwnerFirst(members, session);
+
   async function handleRemoveMember(member: Member) {
     if (!workspaceId || deletingId) return;
+    if (isWorkspaceOwnerMember(member, session)) return;
 
     const token = localStorage.getItem("token");
     if (!token) {
@@ -153,16 +199,27 @@ export default function MembersView() {
     setActionError(null);
 
     try {
-      const result = await removeMemberOrInvitation(member, workspaceId);
-      if (!result.ok) {
-        setActionError(result.error);
+      const url = isActiveStatus(member.status)
+        ? `${TENANTS_URL}/workspaces/${workspaceId}/members/${member.id}`
+        : `${TENANTS_URL}/workspaces/invitations/${member.id}`;
+
+      const res = await fetch(url, {
+        method: "DELETE",
+        cache: "no-store",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (!res.ok) {
+        setActionError(await readDeleteErrorMessage(res));
         return;
       }
 
       setMembers((current) =>
         current.filter((item) => item.id !== member.id),
       );
-      void loadMembers(workspaceId, { silent: true });
     } catch (err: unknown) {
       setActionError(
         err instanceof Error
@@ -235,7 +292,11 @@ export default function MembersView() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-white/5">
-                {members.map((member) => (
+                {visibleMembers.map((member) => {
+                  const isOwner = isWorkspaceOwnerMember(member, session);
+                  const isActive = isOwner || isActiveStatus(member.status);
+
+                  return (
                   <tr
                     key={member.id}
                     className="transition-colors hover:bg-octo-800/40"
@@ -257,27 +318,29 @@ export default function MembersView() {
                     </td>
                     <td className="px-6 py-4">
                       <span
-                        className={`inline-flex rounded-full border px-2.5 py-0.5 text-xs font-medium ${roleStyles[member.role]}`}
+                        className={`inline-flex rounded-full border px-2.5 py-0.5 text-xs font-medium ${
+                          isOwner ? ownerRoleStyle : roleStyles[member.role]
+                        }`}
                       >
-                        {roleLabels[member.role]}
+                        {isOwner ? "Propietario" : roleLabels[member.role]}
                       </span>
                     </td>
                     <td className="px-6 py-4">
                       <span
                         className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-medium ${
-                          isActiveStatus(member.status)
+                          isActive
                             ? statusStyles.ACTIVE
                             : statusStyles.PENDING
                         }`}
                       >
                         <span
                           className={`size-1.5 rounded-full ${
-                            isActiveStatus(member.status)
+                            isActive
                               ? statusDotStyles.ACTIVE
                               : statusDotStyles.PENDING
                           }`}
                         />
-                        {isActiveStatus(member.status)
+                        {isActive
                           ? statusLabels.ACTIVE
                           : statusLabels.PENDING}
                       </span>
@@ -291,19 +354,22 @@ export default function MembersView() {
                         >
                           <Pencil className="size-4" />
                         </button>
-                        <button
-                          type="button"
-                          aria-label={`Eliminar a ${member.name}`}
-                          onClick={() => void handleRemoveMember(member)}
-                          disabled={deletingId === member.id}
-                          className="flex size-8 items-center justify-center rounded-md text-zinc-400 transition-colors hover:bg-red-500/10 hover:text-red-400"
-                        >
-                          <Trash2 className="size-4" />
-                        </button>
+                        {!isOwner && (
+                          <button
+                            type="button"
+                            aria-label={`Eliminar a ${member.name}`}
+                            onClick={() => void handleRemoveMember(member)}
+                            disabled={deletingId === member.id}
+                            className="flex size-8 items-center justify-center rounded-md text-zinc-400 transition-colors hover:bg-red-500/10 hover:text-red-400"
+                          >
+                            <Trash2 className="size-4" />
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>

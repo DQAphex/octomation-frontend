@@ -27,6 +27,7 @@ export interface Member {
   email: string;
   role: UserRole;
   status: MemberStatus;
+  isOwner?: boolean;
 }
 
 export interface Permission {
