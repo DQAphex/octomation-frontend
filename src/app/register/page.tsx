@@ -3,20 +3,54 @@
 import { useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Building2, LoaderCircle, Mail, User } from "lucide-react";
+import { Building2, LoaderCircle, Mail, TriangleAlert, User } from "lucide-react";
 
 import AuthCard from "@/components/auth/AuthCard";
 import AuthField from "@/components/auth/AuthField";
 import PasswordField from "@/components/auth/PasswordField";
+import { IAM_URL } from "@/lib/api/iam";
 
 export default function RegisterPage() {
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    setError(null);
     setIsLoading(true);
-    setTimeout(() => router.push("/dashboard"), 1000);
+
+    const form = new FormData(event.currentTarget);
+    const fullName = String(form.get("fullName") ?? "").trim();
+    const email = String(form.get("email") ?? "").trim();
+    const password = String(form.get("password") ?? "");
+
+    try {
+      const res = await fetch(`${IAM_URL}/iam/register`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fullName, email, password }),
+      });
+
+      if (!res.ok) {
+        let message = "No se pudo crear la cuenta. Inténtalo de nuevo.";
+        try {
+          const body = (await res.json()) as { message?: string | string[] };
+          if (typeof body.message === "string") message = body.message;
+          else if (Array.isArray(body.message)) message = body.message.join(". ");
+        } catch {
+          // Sin cuerpo JSON.
+        }
+        setError(message);
+        return;
+      }
+
+      router.push("/login");
+    } catch {
+      setError("No se pudo conectar con el servidor de autenticación.");
+    } finally {
+      setIsLoading(false);
+    }
   }
 
   return (
@@ -78,6 +112,16 @@ export default function RegisterPage() {
           required
           disabled={isLoading}
         />
+
+        {error && (
+          <p
+            role="alert"
+            className="flex items-start gap-2 text-sm text-red-400"
+          >
+            <TriangleAlert className="mt-0.5 size-4 shrink-0" />
+            {error}
+          </p>
+        )}
 
         <button
           type="submit"

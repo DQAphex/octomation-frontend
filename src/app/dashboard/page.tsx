@@ -10,13 +10,9 @@ import {
   type LucideIcon,
 } from "lucide-react";
 
+import DashboardGreeting from "@/components/dashboard/DashboardGreeting";
 import { navItems } from "@/components/layout/nav-items";
-import {
-  currentUser,
-  membersCount,
-  subscription,
-  workspaces,
-} from "@/lib/mock-data";
+import { membersCount, subscription, workspaces } from "@/lib/mock-data";
 import type { SubscriptionStatus } from "@/types";
 
 export const metadata: Metadata = {
@@ -70,19 +66,11 @@ export default function DashboardPage() {
     timeZone: "UTC",
   }).format(new Date(`${subscription.renewalDate}T00:00:00Z`));
   const numberFormat = new Intl.NumberFormat("es-CL");
-  const firstName = currentUser.name.split(" ")[0];
   const shortcuts = navItems.filter((item) => item.href !== "/dashboard");
 
   return (
     <div className="space-y-8">
-      <section>
-        <h2 className="text-2xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-100">
-          Hola, {firstName} 👋
-        </h2>
-        <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
-          Este es el resumen de tu organización en OCTOMATION.
-        </p>
-      </section>
+      <DashboardGreeting />
 
       <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <MetricCard
