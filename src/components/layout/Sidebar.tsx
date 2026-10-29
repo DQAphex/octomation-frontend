@@ -3,77 +3,28 @@
 import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Check, ChevronsUpDown, Menu, Workflow, X } from "lucide-react";
+import { Building2, Menu, Workflow, X } from "lucide-react";
 
-import { workspaces } from "@/lib/mock-data";
-import type { Workspace } from "@/types";
+import { useSessionUser } from "@/lib/session";
 import { isNavItemActive, navItems } from "./nav-items";
 
 function WorkspaceSwitcher() {
-  const [activeWorkspace, setActiveWorkspace] = useState<Workspace>(
-    workspaces[0],
-  );
-  const [open, setOpen] = useState(false);
+  const user = useSessionUser();
+  const workspaceName = user?.workspaceName ?? "Workspace personal";
 
   return (
-    <div className="relative">
-      <button
-        type="button"
-        onClick={() => setOpen((value) => !value)}
-        aria-haspopup="listbox"
-        aria-expanded={open}
-        className="flex w-full items-center gap-3 rounded-lg border border-zinc-200 bg-white px-3 py-2 text-left text-sm transition-colors hover:bg-zinc-50 dark:border-octo-800 dark:bg-octo-900 dark:hover:bg-octo-800/70"
-      >
-        <span className="flex size-7 shrink-0 items-center justify-center rounded-md bg-zinc-900 text-xs font-semibold text-white dark:bg-zinc-100 dark:text-zinc-900">
-          {activeWorkspace.name.charAt(0)}
+    <div className="flex w-full items-center gap-3 rounded-lg border border-zinc-200 bg-white px-3 py-2 text-left text-sm dark:border-octo-800 dark:bg-octo-900">
+      <span className="flex size-7 shrink-0 items-center justify-center rounded-md bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900">
+        <Building2 className="size-4" />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate font-medium text-zinc-900 dark:text-zinc-100">
+          {workspaceName}
         </span>
-        <span className="min-w-0 flex-1">
-          <span className="block truncate font-medium text-zinc-900 dark:text-zinc-100">
-            {activeWorkspace.name}
-          </span>
-          <span className="block truncate text-xs text-zinc-500 dark:text-zinc-400">
-            {activeWorkspace.slug}
-          </span>
+        <span className="block truncate text-xs text-zinc-500 dark:text-zinc-400">
+          {user?.email ?? "Tu espacio"}
         </span>
-        <ChevronsUpDown className="size-4 shrink-0 text-zinc-400" />
-      </button>
-
-      {open && (
-        <>
-          <button
-            type="button"
-            aria-label="Cerrar selector de workspace"
-            className="fixed inset-0 z-10 cursor-default"
-            onClick={() => setOpen(false)}
-          />
-          <ul
-            role="listbox"
-            className="absolute left-0 right-0 z-20 mt-1 overflow-hidden rounded-lg border border-zinc-200 bg-white p-1 shadow-lg dark:border-octo-800 dark:bg-octo-900"
-          >
-            {workspaces.map((workspace) => {
-              const selected = workspace.id === activeWorkspace.id;
-              return (
-                <li key={workspace.id} role="option" aria-selected={selected}>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setActiveWorkspace(workspace);
-                      setOpen(false);
-                    }}
-                    className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm text-zinc-700 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-octo-800"
-                  >
-                    <span className="flex size-5 shrink-0 items-center justify-center rounded bg-zinc-200 text-[10px] font-semibold text-zinc-700 dark:bg-octo-700 dark:text-zinc-200">
-                      {workspace.name.charAt(0)}
-                    </span>
-                    <span className="flex-1 truncate">{workspace.name}</span>
-                    {selected && <Check className="size-4 text-zinc-500" />}
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
-        </>
-      )}
+      </span>
     </div>
   );
 }
