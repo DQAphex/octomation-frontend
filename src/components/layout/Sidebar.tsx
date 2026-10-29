@@ -5,15 +5,21 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Check, ChevronsUpDown, Menu, Workflow, X } from "lucide-react";
 
-import { workspaces } from "@/lib/mock-data";
+import { useWorkspaces } from "@/lib/hooks/use-workspaces";
 import type { Workspace } from "@/types";
 import { isNavItemActive, navItems } from "./nav-items";
 
 function WorkspaceSwitcher() {
-  const [activeWorkspace, setActiveWorkspace] = useState<Workspace>(
-    workspaces[0],
-  );
+  const { workspaces, currentWorkspace, selectWorkspace } = useWorkspaces();
   const [open, setOpen] = useState(false);
+
+  const activeWorkspace: Workspace = currentWorkspace ?? {
+    id: "",
+    name: "Workspace",
+    slug: "",
+    planId: "",
+    role: "MEMBER",
+  };
 
   return (
     <div className="relative">
@@ -57,7 +63,7 @@ function WorkspaceSwitcher() {
                   <button
                     type="button"
                     onClick={() => {
-                      setActiveWorkspace(workspace);
+                      selectWorkspace(workspace.id);
                       setOpen(false);
                     }}
                     className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm text-zinc-700 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-octo-800"

@@ -9,7 +9,9 @@ import {
   isAlreadyInstalledError,
 } from "@/lib/api/plugins";
 import {
+  filterWorkspacesForSession,
   listWorkspaces,
+  setCurrentWorkspaceId,
   unwrapWorkspaces,
   WORKSPACE_ID_KEY,
   type ApiWorkspace,
@@ -57,7 +59,9 @@ export default function InstallPluginModal({
           return;
         }
 
-        const items = unwrapWorkspaces(result.data);
+        const items = filterWorkspacesForSession(
+          unwrapWorkspaces(result.data),
+        );
         setWorkspaces(items);
 
         const savedId = localStorage.getItem(WORKSPACE_ID_KEY);
@@ -98,7 +102,7 @@ export default function InstallPluginModal({
         return;
       }
 
-      localStorage.setItem(WORKSPACE_ID_KEY, workspaceId);
+      setCurrentWorkspaceId(workspaceId);
       const selected = workspaces.find(
         (workspace) => workspace.workspaceId === workspaceId,
       );

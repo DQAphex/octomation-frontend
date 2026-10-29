@@ -18,8 +18,12 @@ import ConfigureWorkspaceModal from "@/components/workspaces/ConfigureWorkspaceM
 import { countWorkspacePlugins } from "@/lib/api/plugins";
 import { safeFetchJson } from "@/lib/api/safe-fetch";
 import {
+  filterWorkspacesForSession,
+  getSessionAuthHeaders,
   listWorkspaces,
+  setCurrentWorkspaceId,
   TENANTS_URL,
+  TENANT_ID_KEY,
   unwrapWorkspaces,
   type ApiWorkspace,
 } from "@/lib/api/tenants";
@@ -28,7 +32,7 @@ import type { Workspace } from "@/types";
 
 const PLACEHOLDER_UUID = "00000000-0000-0000-0000-000000000000";
 
-type WorkspaceCard = Workspace & { plugins: number | null };
+type WorkspaceCard = Workspace & { plugins: number | null; tenantId: string };
 
 function toSlug(name: string): string {
   return name
@@ -48,6 +52,7 @@ function toWorkspaceCard(workspace: ApiWorkspace): WorkspaceCard {
     planId: "",
     role: "MEMBER",
     plugins: null,
+    tenantId: workspace.tenantId,
   };
 }
 
@@ -94,7 +99,7 @@ export default function WorkspacesPage() {
         return;
       }
 
-      const items = unwrapWorkspaces(result.data);
+      const items = filterWorkspacesForSession(unwrapWorkspaces(result.data));
       const cards = items.map(toWorkspaceCard);
       setWorkspaces(cards);
       setError(null);
@@ -132,7 +137,7 @@ export default function WorkspacesPage() {
       return;
     }
 
-    const tenantId = localStorage.getItem("current_tenant_id");
+    const tenantId = localStorage.getItem(TENANT_ID_KEY);
     if (!tenantId) {
       setCreateError("No hay una empresa activa seleccionada");
       return;
@@ -146,7 +151,7 @@ export default function WorkspacesPage() {
         `${TENANTS_URL}/workspaces`,
         {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: getSessionAuthHeaders(),
           body: JSON.stringify({
             tenantId,
             workspaceNombre: name,
@@ -297,6 +302,11 @@ export default function WorkspacesPage() {
                   </button>
                   <Link
                     href={`/dashboard/workspaces/${workspace.id}/plugins`}
+                    onClick={() =>
+                      setCurrentWorkspaceId(workspace.id, {
+                        tenantId: workspace.tenantId,
+                      })
+                    }
                     className="inline-flex items-center gap-1 font-medium text-violet-400 transition-colors hover:text-violet-300"
                   >
                     Abrir
