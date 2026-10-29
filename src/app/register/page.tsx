@@ -120,6 +120,13 @@ export default function RegisterPage() {
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [step, setStep] = useState<1 | 2>(1);
+  const [formValues, setFormValues] = useState({
+    fullName: "",
+    workspace: "",
+    email: "",
+    password: "",
+  });
 
   const iamUrl =
     process.env.NEXT_PUBLIC_IAM_SERVICE_URL ?? "http://localhost:4002";
@@ -130,11 +137,15 @@ export default function RegisterPage() {
     event.preventDefault();
     setErrorMessage(null);
 
-    const formData = new FormData(event.currentTarget);
-    const fullName = String(formData.get("fullName") ?? "").trim();
-    const companyName = String(formData.get("workspace") ?? "").trim();
-    const email = String(formData.get("email") ?? "").trim();
-    const password = String(formData.get("password") ?? "");
+    if (step === 1) {
+      setStep(2);
+      return;
+    }
+
+    const fullName = formValues.fullName.trim();
+    const companyName = formValues.workspace.trim();
+    const email = formValues.email.trim();
+    const password = formValues.password;
 
     if (!fullName || !companyName || !email || !password) {
       setErrorMessage("Completa todos los campos para continuar.");
@@ -284,6 +295,23 @@ export default function RegisterPage() {
       }
     >
       <form onSubmit={handleSubmit} className="space-y-4">
+        <div
+          aria-label={`Paso ${step} de 2`}
+          className="flex items-center gap-3 text-xs font-medium text-zinc-400"
+        >
+          <span
+            className={
+              step === 1 ? "text-violet-300" : "text-emerald-400"
+            }
+          >
+            1. Tus datos
+          </span>
+          <span className="h-px flex-1 bg-octo-700" />
+          <span className={step === 2 ? "text-violet-300" : ""}>
+            2. Tu empresa
+          </span>
+        </div>
+
         {errorMessage && (
           <div
             role="alert"
@@ -295,59 +323,109 @@ export default function RegisterPage() {
           </div>
         )}
 
-        <AuthField
-          id="fullName"
-          name="fullName"
-          type="text"
-          label="Nombre Completo"
-          icon={User}
-          placeholder="Juan Pérez"
-          autoComplete="name"
-          required
-          disabled={isLoading}
-        />
-        <AuthField
-          id="workspace"
-          name="workspace"
-          type="text"
-          label="Nombre de la Empresa"
-          icon={Building2}
-          placeholder="Acme Corp"
-          autoComplete="organization"
-          required
-          disabled={isLoading}
-        />
-        <AuthField
-          id="email"
-          name="email"
-          type="email"
-          label="Email"
-          icon={Mail}
-          placeholder="tu@empresa.com"
-          autoComplete="email"
-          required
-          disabled={isLoading}
-        />
-        <PasswordField
-          id="password"
-          name="password"
-          placeholder="Mínimo 8 caracteres"
-          autoComplete="new-password"
-          minLength={8}
-          required
-          disabled={isLoading}
-        />
+        {step === 1 ? (
+          <>
+            <AuthField
+              id="fullName"
+              name="fullName"
+              type="text"
+              label="Nombre Completo"
+              icon={User}
+              placeholder="Juan Pérez"
+              autoComplete="name"
+              value={formValues.fullName}
+              onChange={(event) =>
+                setFormValues((values) => ({
+                  ...values,
+                  fullName: event.target.value,
+                }))
+              }
+              required
+              disabled={isLoading}
+            />
+            <AuthField
+              id="email"
+              name="email"
+              type="email"
+              label="Email"
+              icon={Mail}
+              placeholder="tu@empresa.com"
+              autoComplete="email"
+              value={formValues.email}
+              onChange={(event) =>
+                setFormValues((values) => ({
+                  ...values,
+                  email: event.target.value,
+                }))
+              }
+              required
+              disabled={isLoading}
+            />
+            <PasswordField
+              id="password"
+              name="password"
+              placeholder="Mínimo 8 caracteres"
+              autoComplete="new-password"
+              value={formValues.password}
+              onChange={(event) =>
+                setFormValues((values) => ({
+                  ...values,
+                  password: event.target.value,
+                }))
+              }
+              minLength={8}
+              required
+              disabled={isLoading}
+            />
+          </>
+        ) : (
+          <AuthField
+            id="workspace"
+            name="workspace"
+            type="text"
+            label="Nombre de la Empresa / Workspace"
+            icon={Building2}
+            placeholder="Acme Corp"
+            autoComplete="organization"
+            value={formValues.workspace}
+            onChange={(event) =>
+              setFormValues((values) => ({
+                ...values,
+                workspace: event.target.value,
+              }))
+            }
+            required
+            disabled={isLoading}
+          />
+        )}
 
-        <button
-          type="submit"
-          disabled={isLoading}
-          className="mt-2 inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-violet-600 text-sm font-medium text-white shadow-lg shadow-violet-600/25 transition-colors hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-70"
-        >
-          {isLoading && <LoaderCircle className="size-4 animate-spin" />}
-          {isLoading
-            ? "Creando cuenta y configurando empresa..."
-            : "Crear Cuenta"}
-        </button>
+        <div className="flex gap-3">
+          {step === 2 && (
+            <button
+              type="button"
+              disabled={isLoading}
+              onClick={() => {
+                setErrorMessage(null);
+                setStep(1);
+              }}
+              className="mt-2 inline-flex h-11 flex-1 items-center justify-center rounded-lg border border-octo-700 text-sm font-medium text-zinc-200 transition-colors hover:bg-octo-800 disabled:cursor-not-allowed disabled:opacity-70"
+            >
+              Volver
+            </button>
+          )}
+          <button
+            type="submit"
+            disabled={isLoading}
+            className="mt-2 inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-lg bg-violet-600 text-sm font-medium text-white shadow-lg shadow-violet-600/25 transition-colors hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-70"
+          >
+            {isLoading && <LoaderCircle className="size-4 animate-spin" />}
+            {isLoading
+              ? "Creando cuenta y configurando empresa..."
+              : step === 1
+                ? "Continuar"
+                : "Crear Cuenta"}
+          </button>
+        </div>
       </form>
     </AuthCard>
   );
