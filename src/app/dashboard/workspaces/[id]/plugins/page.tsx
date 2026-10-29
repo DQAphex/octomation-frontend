@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { ArrowLeft, LoaderCircle, Store, TriangleAlert } from "lucide-react";
 
+import SimulateMemberHackButton from "@/components/members/SimulateMemberHackButton";
 import ConfigurePluginModal from "@/components/plugins/ConfigurePluginModal";
 import InstalledPluginsGrid from "@/components/plugins/InstalledPluginsGrid";
 import {
@@ -106,6 +107,8 @@ export default function WorkspacePluginsPage() {
           Explorar Catálogo
         </Link>
       </header>
+
+      {workspaceId && <SimulateMemberHackButton workspaceId={workspaceId} />}
 
       {isLoading ? (
         <div className="flex min-h-56 items-center justify-center gap-3 rounded-2xl border border-white/10 bg-octo-900/40 text-sm text-zinc-400">
