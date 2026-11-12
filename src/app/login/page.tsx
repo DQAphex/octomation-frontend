@@ -9,8 +9,16 @@ import AuthCard from "@/components/auth/AuthCard";
 import AuthField from "@/components/auth/AuthField";
 import PasswordField from "@/components/auth/PasswordField";
 import { IAM_URL } from "@/lib/api/iam";
+import { decodeJwtPayload } from "@/lib/auth/session";
+import { notifySessionUpdated, type SessionUser } from "@/lib/session";
+import type { UserRole } from "@/types";
 
 const LOGIN_ERROR = "Credenciales incorrectas o error en el servidor";
+const userRoles: UserRole[] = ["SUPER_ADMIN", "TENANT_ADMIN", "MEMBER"];
+
+function toUserRole(role?: string): UserRole | undefined {
+  return userRoles.find((candidate) => candidate === role);
+}
 
 export default function LoginPage() {
   const router = useRouter();
@@ -49,7 +57,18 @@ export default function LoginPage() {
         return;
       }
 
+      const claims = decodeJwtPayload(token);
+      const role = toUserRole(claims?.role);
+      const sessionUser: SessionUser = {
+        id: claims?.id ?? email,
+        name: claims?.fullName || claims?.full_name || email,
+        email: claims?.email || email,
+        ...(role ? { role } : {}),
+      };
+
       localStorage.setItem("token", token);
+      localStorage.setItem("user", JSON.stringify(sessionUser));
+      notifySessionUpdated();
       router.push("/dashboard");
     } catch {
       setError(LOGIN_ERROR);

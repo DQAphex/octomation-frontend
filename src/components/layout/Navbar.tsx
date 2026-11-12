@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import { Bell } from "lucide-react";
 
 import { getInitials } from "@/lib/format";
-import { currentUser } from "@/lib/mock-data";
+import { useSessionUser } from "@/lib/session";
 import type { UserRole } from "@/types";
 import { getActiveNavItem } from "./nav-items";
 
@@ -21,6 +21,7 @@ const roleStyles: Record<UserRole, string> = {
 export default function Navbar() {
   const pathname = usePathname();
   const section = getActiveNavItem(pathname)?.label ?? "Dashboard";
+  const user = useSessionUser();
 
   return (
     <header className="sticky top-0 z-20 flex h-16 items-center justify-between gap-4 border-b border-zinc-200 bg-white/80 pl-16 pr-4 backdrop-blur-md sm:pr-6 lg:pl-8 dark:border-octo-800 dark:bg-octo-950/80">
@@ -37,11 +38,13 @@ export default function Navbar() {
       </div>
 
       <div className="flex items-center gap-2 sm:gap-3">
-        <span
-          className={`hidden rounded-full border px-2.5 py-0.5 font-mono text-[11px] font-medium sm:inline-flex ${roleStyles[currentUser.role]}`}
-        >
-          {currentUser.role}
-        </span>
+        {user?.role && (
+          <span
+            className={`hidden rounded-full border px-2.5 py-0.5 font-mono text-[11px] font-medium sm:inline-flex ${roleStyles[user.role]}`}
+          >
+            {user.role}
+          </span>
+        )}
 
         <button
           type="button"
@@ -54,10 +57,14 @@ export default function Navbar() {
 
         <Link
           href="/login"
-          title={`${currentUser.name} · ${currentUser.email}`}
+          title={
+            user
+              ? `${user.name} · ${user.email}`
+              : "Inicia sesión"
+          }
           className="flex size-9 items-center justify-center rounded-full bg-linear-to-br from-zinc-700 to-zinc-900 text-xs font-semibold text-white ring-2 ring-white transition-opacity hover:opacity-90 dark:from-zinc-200 dark:to-zinc-400 dark:text-zinc-900 dark:ring-octo-950"
         >
-          {getInitials(currentUser.name)}
+          {user ? getInitials(user.name) : "?"}
         </Link>
       </div>
     </header>
