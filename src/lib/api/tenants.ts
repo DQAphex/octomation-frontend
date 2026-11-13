@@ -137,12 +137,6 @@ export async function getWorkspace(
   );
 }
 
-export async function getWorkspace(workspaceId: string) {
-  return safeFetchJson<ApiWorkspace>(
-    `${TENANTS_URL}/workspaces/${workspaceId}`,
-  );
-}
-
 export async function deleteWorkspace(workspaceId: string) {
   return safeFetchJson<{ message?: string }>(
     `${TENANTS_URL}/workspaces/${workspaceId}`,
