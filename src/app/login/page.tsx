@@ -3,17 +3,23 @@
 import { useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { LoaderCircle, Mail, TriangleAlert } from "lucide-react";
+import { AlertCircle, LoaderCircle, Mail } from "lucide-react";
 
 import AuthCard from "@/components/auth/AuthCard";
 import AuthField from "@/components/auth/AuthField";
 import PasswordField from "@/components/auth/PasswordField";
-import { IAM_URL } from "@/lib/api/iam";
-import { decodeJwtPayload } from "@/lib/auth/session";
-import { notifySessionUpdated, type SessionUser } from "@/lib/session";
+import {
+  notifySessionUpdated,
+  readSessionUser,
+  type SessionUser,
+} from "@/lib/session";
 import type { UserRole } from "@/types";
 
-const LOGIN_ERROR = "Credenciales incorrectas o error en el servidor";
+const IAM_URL =
+  process.env.NEXT_PUBLIC_IAM_SERVICE_URL ?? "http://localhost:4002";
+const TENANT_URL =
+  process.env.NEXT_PUBLIC_TENANTS_URL ?? "http://localhost:4004";
+const REQUEST_TIMEOUT_MS = 15_000;
 const userRoles: UserRole[] = ["SUPER_ADMIN", "TENANT_ADMIN", "MEMBER"];
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -27,10 +33,7 @@ function decodeTokenPayload(token: string): Record<string, unknown> {
   }
 
   try {
-    const base64 = encodedPayload
-      .replace(/-/g, "+")
-      .replace(/_/g, "/")
-      .padEnd(Math.ceil(encodedPayload.length / 4) * 4, "=");
+    const base64 = encodedPayload.replace(/-/g, "+").replace(/_/g, "/");
     const bytes = Uint8Array.from(atob(base64), (character) =>
       character.charCodeAt(0),
     );
@@ -97,11 +100,6 @@ function getLoginError(error: unknown): string {
 }
 
 function getRole(payload: Record<string, unknown>): UserRole | undefined {
-  const singleRole = userRoles.find((candidate) => candidate === payload.role);
-  if (singleRole) {
-    return singleRole;
-  }
-
   if (!Array.isArray(payload.roles)) {
     return undefined;
   }
@@ -119,19 +117,15 @@ function getRole(payload: Record<string, unknown>): UserRole | undefined {
 async function findUserWorkspace(
   userId: string,
   accessToken: string,
-): Promise<{ tenantId: string; workspaceName: string } | null> {
+): Promise<{ tenantId: string; workspaceName: string }> {
   const memberResponse = await fetch(
-    `${TENANT_URL}/members/data/iam-user/${encodeURIComponent(userId)}`,
+    `${TENANT_URL}/members/by-iam-user/${encodeURIComponent(userId)}`,
     {
       headers: { Authorization: `Bearer ${accessToken}` },
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     },
   );
   const memberBody = await getResponseBody(memberResponse);
-
-  if (memberResponse.status === 404) {
-    return null;
-  }
 
   if (!memberResponse.ok) {
     throw new Error(
@@ -140,19 +134,22 @@ async function findUserWorkspace(
     );
   }
 
-  const membership = Array.isArray(memberBody)
-    ? memberBody.find(
-        (item): item is Record<string, unknown> =>
-          isRecord(item) && typeof item.tenantId === "string",
-      )
-    : isRecord(memberBody) && isRecord(memberBody.data)
+  const memberships = Array.isArray(memberBody)
+    ? memberBody
+    : isRecord(memberBody) && Array.isArray(memberBody.data)
       ? memberBody.data
       : isRecord(memberBody)
-        ? memberBody
-        : null;
+        ? [memberBody]
+        : [];
+  const membership = memberships.find(
+    (item): item is Record<string, unknown> =>
+      isRecord(item) && typeof item.tenantId === "string",
+  );
 
   if (!membership || typeof membership.tenantId !== "string") {
-    return null;
+    throw new Error(
+      "Esta cuenta todavía no tiene una empresa asociada. Completa el registro de la empresa o contacta soporte.",
+    );
   }
 
   const tenantResponse = await fetch(
@@ -184,46 +181,39 @@ async function findUserWorkspace(
 export default function LoginPage() {
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setError(null);
+    setErrorMessage(null);
+
+    const formData = new FormData(event.currentTarget);
+    const email = String(formData.get("email") ?? "").trim();
+    const password = String(formData.get("password") ?? "");
+
     setIsLoading(true);
 
-    const form = new FormData(event.currentTarget);
-    const email = String(form.get("email") ?? "").trim();
-    const password = String(form.get("password") ?? "");
-
     try {
-      const res = await fetch(`${IAM_URL}/iam/login`, {
+      const response = await fetch(`${IAM_URL}/iam/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
       });
+      const body = await getResponseBody(response);
 
-      if (!res.ok) {
-        setError(LOGIN_ERROR);
-        return;
+      if (!response.ok) {
+        throw new Error(
+          getErrorMessage(body) ||
+            `El servicio respondió con el estado HTTP ${response.status}.`,
+        );
       }
 
-      if (!isRecord(body)) {
+      if (!isRecord(body) || typeof body.access_token !== "string") {
         throw new Error("IAM devolvió una respuesta de inicio inválida.");
       }
 
-      const accessToken = [
-        body.access_token,
-        body.accessToken,
-        body.token,
-      ].find(
-        (value): value is string =>
-          typeof value === "string" && value.length > 0,
-      );
-
-      if (!accessToken) {
-        throw new Error("IAM devolvió una respuesta de inicio inválida.");
-      }
-
+      const accessToken = body.access_token;
       const claims = decodeTokenPayload(accessToken);
       const previousUser = readSessionUser();
       const previousUserMatches =
@@ -231,15 +221,12 @@ export default function LoginPage() {
       const id =
         typeof claims.sub === "string"
           ? claims.sub
-          : typeof claims.id === "string"
-            ? claims.id
-            : previousUserMatches
-              ? previousUser.id
-              : null;
+          : previousUserMatches
+            ? previousUser.id
+            : null;
 
-      if (!token) {
-        setError(LOGIN_ERROR);
-        return;
+      if (!id) {
+        throw new Error("IAM no devolvió el identificador de esta cuenta.");
       }
 
       const name =
@@ -248,7 +235,10 @@ export default function LoginPage() {
           : previousUserMatches
             ? previousUser.name
             : email;
-      const workspace = await findUserWorkspace(id, accessToken);
+      const { tenantId, workspaceName } = await findUserWorkspace(
+        id,
+        accessToken,
+      );
       const sessionUser: SessionUser = {
         id,
         name,
@@ -259,12 +249,8 @@ export default function LoginPage() {
           : previousUserMatches && previousUser.role
             ? { role: previousUser.role }
             : {}),
-        ...(workspace
-          ? {
-              tenantId: workspace.tenantId,
-              workspaceName: workspace.workspaceName,
-            }
-          : {}),
+        tenantId,
+        workspaceName,
       };
 
       try {
@@ -283,7 +269,7 @@ export default function LoginPage() {
         );
       }
 
-      router.push(workspace ? "/dashboard" : "/onboarding");
+      router.push("/dashboard");
     } catch (error: unknown) {
       setErrorMessage(getLoginError(error));
     } finally {
@@ -308,6 +294,17 @@ export default function LoginPage() {
       }
     >
       <form onSubmit={handleSubmit} className="space-y-4">
+        {errorMessage && (
+          <div
+            role="alert"
+            aria-live="assertive"
+            className="flex items-center gap-2 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-400"
+          >
+            <AlertCircle className="size-4 shrink-0" />
+            <span>{errorMessage}</span>
+          </div>
+        )}
+
         <AuthField
           id="email"
           name="email"
@@ -327,16 +324,6 @@ export default function LoginPage() {
           required
           disabled={isLoading}
         />
-
-        {error && (
-          <p
-            role="alert"
-            className="flex items-start gap-2 text-sm text-red-400"
-          >
-            <TriangleAlert className="mt-0.5 size-4 shrink-0" />
-            {error}
-          </p>
-        )}
 
         <button
           type="submit"
