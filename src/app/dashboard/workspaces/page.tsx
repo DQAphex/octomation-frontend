@@ -93,7 +93,7 @@ export default function WorkspacesPage() {
     try {
       const result = await listWorkspaces(signal);
 
-      if (result.aborted) return;
+      if (!result.ok && result.aborted) return;
       if (!result.ok) {
         setError(result.error);
         return;

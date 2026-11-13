@@ -162,15 +162,11 @@ export default function RegisterPage() {
         throw new Error("IAM devolvió una respuesta de inicio de sesión inválida.");
       }
 
-      const accessToken =
-        (typeof loginBody.token === "string" && loginBody.token) ||
-        (typeof loginBody.access_token === "string" && loginBody.access_token) ||
-        (typeof loginBody.accessToken === "string" && loginBody.accessToken) ||
-        "";
-
-      if (!accessToken) {
-        throw new Error("La respuesta del servicio no incluye el token de acceso.");
-      }
+      const accessToken = getRequiredString(
+        loginBody,
+        ["access_token", "accessToken", "token"],
+        "el token de acceso"
+      );
 
       const tenantResponse = await postJson(
         TENANT_URL,
